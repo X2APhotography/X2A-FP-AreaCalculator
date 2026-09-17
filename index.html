@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Floorplan Area Calculator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/11.1.1/marked.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f4f0;
+    --panel:#ffffff;
+    --ink:#1f2420;
+    --muted:#6b6f6a;
+    --line:#e2ded5;
+    --accent:#3f5d4c;
+    --accent-ink:#ffffff;
+    --warn-bg:#fdf3e3;
+    --warn-line:#e8c987;
+    --err-bg:#fbe9e7;
+    --err-line:#e0a79c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    line-height:1.5;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:32px 20px 80px;}
+  header{margin-bottom:24px;}
+  h1{font-size:1.5rem;margin:0 0 4px;}
+  header p{color:var(--muted);margin:0;font-size:0.95rem;}
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:20px;
+    margin-bottom:20px;
+  }
+  .panel h2{font-size:1rem;margin:0 0 14px;display:flex;align-items:center;gap:8px;}
+  .panel h2 .num{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--accent-ink);
+    font-size:0.75rem;font-weight:600;flex:none;
+  }
+
+  label{display:block;font-size:0.85rem;color:var(--muted);margin-bottom:6px;}
+  input[type=text],input[type=password],select{
+    width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;
+    font-size:0.95rem;background:#fff;color:var(--ink);
+  }
+  .row{display:flex;gap:12px;flex-wrap:wrap;}
+  .row > div{flex:1;min-width:220px;}
+  .key-row{display:flex;gap:8px;align-items:flex-end;}
+  .key-row > div{flex:1;}
+  button.ghost{
+    padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;
+    cursor:pointer;font-size:0.85rem;color:var(--ink);white-space:nowrap;
+  }
+  button.ghost:hover{background:var(--bg);}
+  .checkline{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:0.82rem;color:var(--muted);}
+  .checkline input{width:auto;}
+
+  .dropzone{
+    border:2px dashed var(--line);border-radius:10px;padding:26px;text-align:center;
+    cursor:pointer;color:var(--muted);transition:border-color .15s, background .15s;
+  }
+  .dropzone.drag{border-color:var(--accent);background:#f1f5f2;}
+  .dropzone strong{color:var(--ink);}
+  #fileInput{display:none;}
+  .preview{
+    margin-top:14px;display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;
+  }
+  .preview img{max-width:260px;max-height:260px;border-radius:8px;border:1px solid var(--line);}
+  .preview .meta{font-size:0.85rem;color:var(--muted);}
+  .preview .meta button{margin-top:8px;}
+
+  .runbar{display:flex;align-items:center;gap:12px;margin-top:16px;}
+  button.primary{
+    background:var(--accent);color:var(--accent-ink);border:none;border-radius:8px;
+    padding:11px 20px;font-size:0.95rem;cursor:pointer;font-weight:600;
+  }
+  button.primary:disabled{opacity:0.45;cursor:not-allowed;}
+  .status{font-size:0.88rem;color:var(--muted);}
+  .spinner{
+    width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);
+    border-radius:50%;display:inline-block;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:6px;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .result{border:1px solid var(--line);border-radius:10px;padding:18px 20px;background:#fff;}
+  .result h3{margin-top:0;}
+  .result table{border-collapse:collapse;width:100%;font-size:0.9rem;margin:10px 0;}
+  .result th,.result td{border:1px solid var(--line);padding:6px 8px;text-align:left;}
+  .result pre{background:#f5f3ee;padding:10px;border-radius:6px;overflow-x:auto;font-size:0.82rem;}
+  details{margin-top:12px;border-top:1px solid var(--line);padding-top:10px;}
+  details summary{cursor:pointer;font-size:0.85rem;color:var(--muted);}
+
+  .callout{border-radius:8px;padding:12px 14px;font-size:0.88rem;margin-bottom:14px;}
+  .callout.warn{background:var(--warn-bg);border:1px solid var(--warn-line);}
+  .callout.err{background:var(--err-bg);border:1px solid var(--err-line);}
+
+  .history-item{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:9px 4px;border-bottom:1px solid var(--line);font-size:0.88rem;cursor:pointer;
+  }
+  .history-item:last-child{border-bottom:none;}
+  .history-item:hover{background:var(--bg);}
+  .history-item .hname{font-weight:500;}
+  .history-item .htime{color:var(--muted);font-size:0.78rem;}
+
+  footer{color:var(--muted);font-size:0.78rem;margin-top:30px;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Floorplan Area Calculator</h1>
+    <p>Upload a floorplan, get an internal area estimate. No setup needed &mdash; just drop in an image.</p>
+  </header>
+
+  <div class="panel">
+    <h2><span class="num">1</span> Upload a floorplan</h2>
+    <div class="dropzone" id="dropzone">
+      <div>Drag a floorplan image here, or <strong>click to choose a file</strong></div>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+    <div class="preview" id="previewBox" style="display:none;">
+      <img id="previewImg" alt="Floorplan preview">
+      <div class="meta">
+        <div id="fileMeta"></div>
+        <button class="ghost" id="clearFileBtn" type="button">Remove</button>
+      </div>
+    </div>
+
+    <div class="runbar">
+      <button class="primary" id="runBtn" disabled>Calculate area</button>
+      <span class="status" id="statusText"></span>
+    </div>
+  </div>
+
+  <div class="panel" id="resultPanel" style="display:none;">
+    <h2><span class="num">2</span> Result</h2>
+    <div id="resultBody" class="result"></div>
+  </div>
+
+  <div class="panel" id="historyPanel" style="display:none;">
+    <h2>This session's calculations</h2>
+    <div id="historyList"></div>
+  </div>
+
+  <footer>Runs through a private proxy &mdash; no API key ever appears in this page. Nothing here is a certified measurement &mdash; see the note at the bottom of each result.</footer>
+</div>
+
+<script>
+const SYSTEM_INSTRUCTIONS = `When someone attaches a floorplan image and asks for the internal area, calculate
+it using the process below. Don't ask which method to use or explain the process
+before starting — just apply it and give the answer.
+
+## 1. Treat every printed dimension as ground truth
+Every measurement shown on the plan (room dimensions, overall widths, etc.) is a
+real, known value — not something to derive from the drawing. Use these as the
+source of truth throughout, not just for initial scale-setting.
+
+## 2. Derive scale from MULTIPLE rooms, not one
+Digitisation of these sketches occasionally introduces a slightly inconsistent
+scale across the drawing (not always perfectly uniform). So:
+- Calculate px/metre from at least 4-5 different labelled rooms, spread across
+  different areas of the plan (not clustered in one corner).
+- Report the range, not just an average. If tight (within ~2%), use the average.
+  If one or two rooms are noticeably off from the rest, flag which ones and
+  exclude them from the scale calculation rather than letting them skew it.
+- Don't spend excessive time chasing sub-1% scale precision — this is a
+  floorplan, not a survey.
+
+## 3. Use the block/rectangle method — do NOT trace individual walls
+This is the most important instruction. Do not do room-by-room pixel
+wall-tracing — it compounds small errors across dozens of judgment calls and
+is unreliable.
+
+Instead:
+- Divide the floorplan into 4-8 large rectangles (or simple shapes) that
+  together cover the whole footprint, using the visible wall lines as a guide.
+- Where a section has a curved wall, bay window, angled/splayed corner, or
+  similar, see the correction method in step 4 — don't just square it off.
+- It's fine (expected) for rectangles to slightly overlap shared walls — don't
+  worry about wall-thickness precision at rectangle joins.
+
+## 4. Handle chamfers, bay windows, and curves explicitly — don't square them off
+Real plans routinely have splayed/chamfered corners, angled bay windows, and
+curved walls (bowed windows, rounded spa/bath ends). Don't default these to a
+full square corner and move on. For each one visible on the plan:
+
+- **Classify it first**: corner CUT (removes area from the bounding box), a
+  BUMP-OUT (adds area beyond the room's main rectangle), or a true CURVE
+  (circular segment, add or subtract)?
+- **Chamfered corner**: estimate the two leg lengths of the cut-off triangle at
+  the calibrated scale, subtract \`0.5 × leg1 × leg2\` from that room/block.
+- **Bay/angled bump-out**: estimate as a triangle or trapezoid, add it — but
+  only if it's clearly outside the room's printed straight-wall dimension.
+- **Curve**: approximate as a circular segment using an estimated
+  radius/chord — nearest 0.1m on the radius is fine.
+- **For labelled rooms**, trust the printed W×D as the straight wall run (not
+  a bounding box past the splay) — only add/subtract for extra floor area
+  clearly outside those printed walls.
+- Do this correction **inline as you build the block method**, not as a
+  retrospective patch — a systematic "round up to a square corner" bias
+  overstates the total in one direction, which doesn't average out.
+- Prioritise the 2-4 largest chamfers/bays for precise correction; smaller
+  ones can stay as reasonable approximations — state which is which.
+
+## 5. Itemise every unlabelled space individually — never a lump sum
+List each unlabelled space on its own line (kitchen, each bathroom separately,
+laundry, entry, each robe/WIR, stairs, landing, hallway/circulation — per
+level if multi-storey). Tag each **[measured]** if pixel-traced at the
+calibrated scale, or **[estimated]** if a typical-proportion guess. Never fold
+several spaces into one combined figure like "wet areas + circulation ≈ 30 m²"
+— a lump sum hides exactly where the uncertainty is.
+
+## 6. Stairs, landings, and circulation must be measured, not guessed
+This has repeatedly been the single largest source of disagreement between
+independent attempts at the same plan — bigger than chamfers, bigger than
+kitchen/bathroom sizing. On any multi-level plan:
+- Pixel-trace each stair footprint and landing directly at the calibrated
+  scale — almost always simple rectangles even when tread lines look busy.
+- Cross-check between floors: the stair void on the floor above should
+  roughly match the stair footprint below it (same staircase, drawn twice) —
+  flag it if they don't.
+- Do the same for any hallway/landing space wide enough to matter (>1 m²).
+- Don't allocate stairs/landings/hallways as a percentage or rounded guess.
+
+## 7. Cross-check with a second, independent method in the same pass
+Before finalising, sanity-check the block-method total against the sum of all
+explicitly labelled room dimensions plus the itemised unlabelled spaces from
+step 5. If the two disagree by more than ~5%, find the likely cause (a
+double-counted or missed section) and resolve it before answering.
+
+## 8. One pass, one response
+Work through this yourself using code/pixel analysis as needed, but land on a
+final answer in a single response — don't stage it across multiple replies.
+
+## 9. Define what's included/excluded
+Default to internal living area only. Exclude garage/carport, sheds,
+alfresco/porch areas, and outdoor space unless told otherwise, and state what
+was excluded. Note whether the total includes internal partition wall
+thickness (it will, under this method) rather than trying to strip it out.
+
+## 10. Multi-level plans: break out each level
+If the plan shows multiple floors (ground, first floor, lower level, etc.),
+give a per-level subtotal as well as the combined total, and state what was
+excluded at each level.
+
+## 11. Output format
+- **Final answer as a range** (low / best estimate / high) — not a single
+  falsely-precise number.
+- A short table of the rectangles/blocks used and their dimensions.
+- The itemised unlabelled-space list from step 5, with [measured]/[estimated]
+  tags.
+- The scale value(s) used and which rooms they came from.
+- One or two sentences naming the biggest specific source of uncertainty on
+  this plan (e.g. "the first-floor landing," not "unlabelled areas").
+- Keep the working summarised, not a blow-by-blow.
+
+## 12. If precision genuinely matters
+If it sounds like this is for a valuation, contract, or dispute, say so
+plainly: this is a pixel-based estimate off a marketing floorplan, not a
+substitute for a certified/surveyed measurement, and for anything contractual
+a second independent check (different model, or a proper measure) is worth
+doing before relying on the number.`;
+
+const USER_PROMPT = "Here is a floorplan image. Calculate its internal area following the process in your instructions.";
+
+// Set this to your deployed Cloudflare Worker URL, e.g.
+// "https://floorplan-proxy.yoursubdomain.workers.dev"
+const WORKER_URL = "PASTE_YOUR_WORKER_URL_HERE";
+
+// Model to request. No key is needed here — the Worker holds that.
+const MODEL = "gemini-2.5-pro";
+
+// ---------- element refs ----------
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const previewBox = document.getElementById('previewBox');
+const previewImg = document.getElementById('previewImg');
+const fileMeta = document.getElementById('fileMeta');
+const clearFileBtn = document.getElementById('clearFileBtn');
+const runBtn = document.getElementById('runBtn');
+const statusText = document.getElementById('statusText');
+const resultPanel = document.getElementById('resultPanel');
+const resultBody = document.getElementById('resultBody');
+const historyPanel = document.getElementById('historyPanel');
+const historyList = document.getElementById('historyList');
+
+let currentFile = null;   // { base64, mimeType, name }
+let history = [];
+
+// ---------- file handling ----------
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
+});
+clearFileBtn.addEventListener('click', () => {
+  currentFile = null;
+  previewBox.style.display = 'none';
+  fileInput.value = '';
+  updateRunButton();
+});
+
+function handleFile(file) {
+  if (!file.type.startsWith('image/')) {
+    alert('Please choose an image file (JPG, PNG, etc.)');
+    return;
+  }
+  const img = new Image();
+  const reader = new FileReader();
+  reader.onload = e => {
+    img.onload = () => {
+      // Downscale large images so the request stays a sane size, while
+      // keeping enough resolution to read printed dimensions on the plan.
+      const MAX_DIM = 2200;
+      let { width, height } = img;
+      if (width > MAX_DIM || height > MAX_DIM) {
+        const scale = MAX_DIM / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      const base64 = dataUrl.split(',')[1];
+
+      currentFile = { base64, mimeType: 'image/jpeg', name: file.name };
+      previewImg.src = dataUrl;
+      fileMeta.textContent = `${file.name} (${width}×${height}px, resized for upload)`;
+      previewBox.style.display = 'flex';
+      updateRunButton();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function updateRunButton() {
+  runBtn.disabled = !currentFile;
+}
+
+// ---------- run ----------
+runBtn.addEventListener('click', runCalculation);
+
+async function runCalculation() {
+  if (!currentFile) return;
+
+  if (!WORKER_URL || WORKER_URL === "PASTE_YOUR_WORKER_URL_HERE") {
+    showError('This tool isn\u2019t wired up to the proxy yet \u2014 the WORKER_URL constant near the top of the script still needs to be set to your deployed Cloudflare Worker URL.', null);
+    return;
+  }
+
+  runBtn.disabled = true;
+  statusText.innerHTML = '<span class="spinner"></span>Calculating\u2026 this can take 30\u201390 seconds';
+  resultPanel.style.display = 'none';
+
+  const geminiBody = {
+    system_instruction: { parts: [{ text: SYSTEM_INSTRUCTIONS }] },
+    contents: [{
+      role: 'user',
+      parts: [
+        { text: USER_PROMPT },
+        { inline_data: { mime_type: currentFile.mimeType, data: currentFile.base64 } }
+      ]
+    }],
+    tools: [{ code_execution: {} }],
+    generationConfig: { temperature: 0.2 }
+  };
+
+  try {
+    const resp = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: MODEL, body: geminiBody })
+    });
+
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      const msg = (data && data.error && data.error.message) ? data.error.message : `HTTP ${resp.status}`;
+      showError(msg, resp.status);
+      return;
+    }
+
+    const candidate = data.candidates && data.candidates[0];
+    if (!candidate) {
+      showError('The API returned no result. The image may have been blocked by a safety filter, or the response was empty.', null);
+      return;
+    }
+
+    const parts = (candidate.content && candidate.content.parts) || [];
+    let answerText = '';
+    let workingText = '';
+
+    parts.forEach(p => {
+      if (p.text) answerText += p.text + '\n\n';
+      if (p.executableCode) workingText += '```python\n' + p.executableCode.code + '\n```\n\n';
+      if (p.codeExecutionResult) workingText += '```\n' + (p.codeExecutionResult.output || '') + '\n```\n\n';
+    });
+
+    if (!answerText.trim()) {
+      showError('The model returned an empty answer. Try again in a moment.', null);
+      return;
+    }
+
+    renderResult(answerText, workingText, currentFile.name);
+    addToHistory(currentFile.name, answerText, workingText);
+    statusText.textContent = '';
+  } catch (err) {
+    showError('Could not reach the proxy. Check your internet connection and try again. (' + err.message + ')', null);
+  } finally {
+    runBtn.disabled = false;
+  }
+}
+
+function showError(message, status) {
+  statusText.textContent = '';
+  resultPanel.style.display = 'block';
+  let hint = '';
+  if (status === 400) hint = 'The request may have been malformed \u2014 try again with the same image.';
+  if (status === 403) hint = 'The proxy rejected this request. If you\u2019re opening this page from somewhere other than the usual team link, that\u2019s likely why.';
+  if (status === 429) hint = 'The free-tier rate limit has been hit for today. Try again shortly, or ask whoever set this up to check the quota.';
+  resultBody.innerHTML = `<div class="callout err"><strong>Something went wrong.</strong><br>${escapeHtml(message)}${hint ? '<br><br>' + hint : ''}</div>`;
+}
+
+function renderResult(answerText, workingText, filename) {
+  resultPanel.style.display = 'block';
+  let html = `<h3>${escapeHtml(filename)}</h3>`;
+  html += marked.parse(answerText);
+  if (workingText.trim()) {
+    html += `<details><summary>Show the model's working (code execution)</summary>${marked.parse(workingText)}</details>`;
+  }
+  resultBody.innerHTML = html;
+}
+
+function addToHistory(filename, answerText, workingText) {
+  history.unshift({ filename, answerText, workingText, time: new Date() });
+  historyPanel.style.display = 'block';
+  historyList.innerHTML = '';
+  history.forEach((h, i) => {
+    const div = document.createElement('div');
+    div.className = 'history-item';
+    div.innerHTML = `<span class="hname">${escapeHtml(h.filename)}</span><span class="htime">${h.time.toLocaleTimeString()}</span>`;
+    div.addEventListener('click', () => renderResult(h.answerText, h.workingText, h.filename));
+    historyList.appendChild(div);
+  });
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+updateRunButton();
+</script>
+</body>
+</html>
