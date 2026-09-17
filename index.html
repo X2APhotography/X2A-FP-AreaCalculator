@@ -275,7 +275,7 @@ const USER_PROMPT = "Here is a floorplan image. Calculate its internal area foll
 
 // Set this to your deployed Cloudflare Worker URL, e.g.
 // "https://floorplan-proxy.yoursubdomain.workers.dev"
-const WORKER_URL = "https://x2a-fp-areacalculator.sam-833.workers.dev/";
+const WORKER_URL = "PASTE_YOUR_WORKER_URL_HERE";
 
 // Model to request. No key is needed here — the Worker holds that.
 const MODEL = "gemini-3.6-flash";
@@ -361,13 +361,15 @@ runBtn.addEventListener('click', runCalculation);
 async function runCalculation() {
   if (!currentFile) return;
 
-  if (!WORKER_URL || WORKER_URL === "PASTE_YOUR_WORKER_URL_HERE") {
+  const workerUrl = (WORKER_URL || "").trim();
+
+  if (!workerUrl || workerUrl === "PASTE_YOUR_WORKER_URL_HERE") {
     showError('This tool isn\u2019t wired up to the proxy yet \u2014 the WORKER_URL constant near the top of the script still needs to be set to your deployed Cloudflare Worker URL.', null);
     return;
   }
 
   runBtn.disabled = true;
-  statusText.innerHTML = '<span class="spinner"></span>Calculating\u2026 this can take 30\u201390 seconds';
+  statusText.innerHTML = '<span class="spinner"></span>Calculating\u2026 usually under a minute, occasionally longer if it has to retry';
   resultPanel.style.display = 'none';
 
   const geminiBody = {
@@ -384,7 +386,7 @@ async function runCalculation() {
   };
 
   try {
-    const resp = await fetch(WORKER_URL, {
+    const resp = await fetch(workerUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: MODEL, body: geminiBody })
@@ -415,7 +417,20 @@ async function runCalculation() {
     });
 
     if (!answerText.trim()) {
-      showError('The model returned an empty answer. Try again in a moment.', null);
+      const finishReason = candidate.finishReason || 'unknown';
+      const blockReason = data.promptFeedback && data.promptFeedback.blockReason;
+      let detail = `The model stopped without writing a final answer (reason: ${finishReason}).`;
+      if (blockReason) detail = `Google's safety filter blocked this image (reason: ${blockReason}). Try a clearer or lower-resolution scan.`;
+      else if (finishReason === 'MAX_TOKENS') detail += ' It likely ran out of output budget partway through the working \u2014 try again, or try a simpler/smaller floorplan first to confirm the tool itself is working.';
+
+      if (workingText.trim()) {
+        resultPanel.style.display = 'block';
+        resultBody.innerHTML = `<div class="callout warn"><strong>No final answer, but here's what the model got through:</strong><br>${escapeHtml(detail)}</div>` +
+          `<details open><summary>Partial working</summary>${marked.parse(workingText)}</details>`;
+        statusText.textContent = '';
+      } else {
+        showError(detail, null);
+      }
       return;
     }
 
