@@ -380,7 +380,7 @@ async function runCalculation() {
       ]
     }],
     tools: [{ code_execution: {} }],
-    generationConfig: { temperature: 0.2 }
+    generationConfig: { temperature: 0.2, maxOutputTokens: 32768 }
   };
 
   try {
