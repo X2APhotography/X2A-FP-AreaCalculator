@@ -145,6 +145,7 @@
   <div class="panel" id="resultPanel" style="display:none;">
     <h2><span class="num">2</span> Result</h2>
     <div id="resultBody" class="result"></div>
+    <button class="ghost" id="downloadReportBtn" type="button" style="display:none;margin-top:14px;">Download report</button>
   </div>
 
   <div class="panel" id="historyPanel" style="display:none;">
@@ -293,9 +294,11 @@ const resultPanel = document.getElementById('resultPanel');
 const resultBody = document.getElementById('resultBody');
 const historyPanel = document.getElementById('historyPanel');
 const historyList = document.getElementById('historyList');
+const downloadReportBtn = document.getElementById('downloadReportBtn');
 
-let currentFile = null;   // { base64, mimeType, name }
+let currentFile = null;   // { base64, mimeType, name, dataUrl }
 let history = [];
+let lastResult = null;    // { filename, imageDataUrl, answerText, workingText, time }
 
 // ---------- file handling ----------
 dropzone.addEventListener('click', () => fileInput.click());
@@ -340,7 +343,7 @@ function handleFile(file) {
       const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
       const base64 = dataUrl.split(',')[1];
 
-      currentFile = { base64, mimeType: 'image/jpeg', name: file.name };
+      currentFile = { base64, mimeType: 'image/jpeg', name: file.name, dataUrl };
       previewImg.src = dataUrl;
       fileMeta.textContent = `${file.name} (${width}×${height}px, resized for upload)`;
       previewBox.style.display = 'flex';
@@ -371,6 +374,7 @@ async function runCalculation() {
   runBtn.disabled = true;
   statusText.innerHTML = '<span class="spinner"></span>Calculating\u2026 usually under a minute, occasionally longer if it has to retry';
   resultPanel.style.display = 'none';
+  downloadReportBtn.style.display = 'none';
 
   const geminiBody = {
     system_instruction: { parts: [{ text: SYSTEM_INSTRUCTIONS }] },
@@ -425,6 +429,7 @@ async function runCalculation() {
 
       if (workingText.trim()) {
         resultPanel.style.display = 'block';
+        downloadReportBtn.style.display = 'none';
         resultBody.innerHTML = `<div class="callout warn"><strong>No final answer, but here's what the model got through:</strong><br>${escapeHtml(detail)}</div>` +
           `<details open><summary>Partial working</summary>${marked.parse(workingText)}</details>`;
         statusText.textContent = '';
@@ -434,8 +439,8 @@ async function runCalculation() {
       return;
     }
 
-    renderResult(answerText, workingText, currentFile.name);
-    addToHistory(currentFile.name, answerText, workingText);
+    renderResult(answerText, workingText, currentFile.name, currentFile.dataUrl);
+    addToHistory(currentFile.name, answerText, workingText, currentFile.dataUrl);
     statusText.textContent = '';
   } catch (err) {
     showError('Could not reach the proxy. Check your internet connection and try again. (' + err.message + ')', null);
@@ -447,6 +452,7 @@ async function runCalculation() {
 function showError(message, status) {
   statusText.textContent = '';
   resultPanel.style.display = 'block';
+  downloadReportBtn.style.display = 'none';
   let hint = '';
   if (status === 400) hint = 'The request may have been malformed \u2014 try again with the same image.';
   if (status === 403) hint = 'The proxy rejected this request. If you\u2019re opening this page from somewhere other than the usual team link, that\u2019s likely why.';
@@ -454,25 +460,77 @@ function showError(message, status) {
   resultBody.innerHTML = `<div class="callout err"><strong>Something went wrong.</strong><br>${escapeHtml(message)}${hint ? '<br><br>' + hint : ''}</div>`;
 }
 
-function renderResult(answerText, workingText, filename) {
+function renderResult(answerText, workingText, filename, imageDataUrl) {
   resultPanel.style.display = 'block';
   let html = `<h3>${escapeHtml(filename)}</h3>`;
+  if (imageDataUrl) {
+    html += `<img src="${imageDataUrl}" alt="Uploaded floorplan" style="max-width:100%;border-radius:8px;border:1px solid var(--line);margin-bottom:14px;">`;
+  }
   html += marked.parse(answerText);
   if (workingText.trim()) {
     html += `<details><summary>Show the model's working (code execution)</summary>${marked.parse(workingText)}</details>`;
   }
   resultBody.innerHTML = html;
+
+  lastResult = { filename, imageDataUrl, answerText, workingText, time: new Date() };
+  downloadReportBtn.style.display = 'inline-block';
 }
 
-function addToHistory(filename, answerText, workingText) {
-  history.unshift({ filename, answerText, workingText, time: new Date() });
+downloadReportBtn.addEventListener('click', () => {
+  if (!lastResult) return;
+
+  const reportHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Floorplan Area Report \u2014 ${escapeHtml(lastResult.filename)}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/11.1.1/marked.min.js"><\/script>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;max-width:800px;margin:0 auto;padding:32px 20px;color:#1f2420;line-height:1.5;}
+  h1{font-size:1.3rem;margin-bottom:2px;}
+  .meta{color:#6b6f6a;font-size:0.85rem;margin-bottom:20px;}
+  img{max-width:100%;border-radius:8px;border:1px solid #e2ded5;margin-bottom:20px;}
+  table{border-collapse:collapse;width:100%;font-size:0.9rem;margin:12px 0;}
+  th,td{border:1px solid #e2ded5;padding:6px 8px;text-align:left;}
+  pre{background:#f5f3ee;padding:10px;border-radius:6px;overflow-x:auto;font-size:0.82rem;}
+  details{margin-top:16px;border-top:1px solid #e2ded5;padding-top:10px;}
+  @media print { body{max-width:100%;} }
+</style>
+</head>
+<body>
+  <h1>Floorplan Area Report</h1>
+  <div class="meta">${escapeHtml(lastResult.filename)} &middot; generated ${lastResult.time.toLocaleString()}</div>
+  ${lastResult.imageDataUrl ? `<img src="${lastResult.imageDataUrl}" alt="Uploaded floorplan">` : ''}
+  <div id="answer"></div>
+  ${lastResult.workingText.trim() ? `<details><summary>Model's working (code execution)</summary><div id="working"></div></details>` : ''}
+  <script>
+    document.getElementById('answer').innerHTML = marked.parse(${JSON.stringify(lastResult.answerText)});
+    ${lastResult.workingText.trim() ? `document.getElementById('working').innerHTML = marked.parse(${JSON.stringify(lastResult.workingText)});` : ''}
+  <\/script>
+</body>
+</html>`;
+
+  const blob = new Blob([reportHtml], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = lastResult.filename.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9\-_]+/gi, '_');
+  a.href = url;
+  a.download = `floorplan-report-${safeName || 'result'}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
+
+function addToHistory(filename, answerText, workingText, imageDataUrl) {
+  history.unshift({ filename, answerText, workingText, imageDataUrl, time: new Date() });
   historyPanel.style.display = 'block';
   historyList.innerHTML = '';
   history.forEach((h, i) => {
     const div = document.createElement('div');
     div.className = 'history-item';
     div.innerHTML = `<span class="hname">${escapeHtml(h.filename)}</span><span class="htime">${h.time.toLocaleTimeString()}</span>`;
-    div.addEventListener('click', () => renderResult(h.answerText, h.workingText, h.filename));
+    div.addEventListener('click', () => renderResult(h.answerText, h.workingText, h.filename, h.imageDataUrl));
     historyList.appendChild(div);
   });
 }
